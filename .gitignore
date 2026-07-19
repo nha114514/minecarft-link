@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.dotnet-home/
+.nuget/
+.appdata/
+.firecrawl/
+artifacts/
+.codegraph/
+.superpowers/
+docs/superpowers/
+TestResults/
+*.user
+*.suo
