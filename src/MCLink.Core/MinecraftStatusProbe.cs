@@ -32,6 +32,7 @@ public sealed class MinecraftStatusProbe
             await client.ConnectAsync(address, port, deadline.Token);
             var stream = client.GetStream();
 
+            // 端口能连上还不够；收到 Minecraft 状态包，才把它当作局域网世界的端口。
             await stream.WriteAsync(BuildHandshakePacket(address, port), deadline.Token);
             await stream.WriteAsync(new byte[] { 1, 0 }, deadline.Token);
 
@@ -74,6 +75,7 @@ public sealed class MinecraftStatusProbe
 
     private static byte[] BuildHandshakePacket(IPAddress address, int port)
     {
+        // 这里走的是 Minecraft 原本的状态查询协议，协议版本用 -1 让服务端自己返回版本。
         var host = Encoding.UTF8.GetBytes(address.ToString());
         using var body = new MemoryStream();
         WriteVarInt(body, 0);

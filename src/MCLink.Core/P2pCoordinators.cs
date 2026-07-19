@@ -14,6 +14,7 @@ public sealed class P2pHostCoordinator : IAsyncDisposable
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly object _sync = new();
     private readonly object _stopSync = new();
+    // 回应码只收一次，防止同一段旧代码重复接入。
     private readonly HashSet<Guid> _consumedSessionIds = [];
     private readonly List<ConnectedPeer> _connectedPeers = [];
     private PendingInvite? _pendingInvite;
@@ -78,6 +79,7 @@ public sealed class P2pHostCoordinator : IAsyncDisposable
             try
             {
                 var sessionId = Guid.NewGuid();
+                // 候选地址会随网络变化，过两分钟就让这张邀请失效，少留一点误连的机会。
                 var expiresAt = _timeProvider.GetUtcNow().AddMinutes(2);
                 var sdp = await session.CreateOfferSdpAsync(linked.Token);
                 var code = PairingCodeCodec.Encode(new PairingCodePayload(
@@ -345,6 +347,7 @@ public sealed class P2pGuestCoordinator : IAsyncDisposable
         try
         {
             await session.WaitForConnectedAsync(_connectionTimeout, _stopping.Token);
+            // 直连建立后，在本机临时开一个端口给 Minecraft 客户端连；它不对局域网开放。
             var proxy = new GuestLoopbackProxy(session);
             await proxy.StartAsync(_stopping.Token);
             var stopProxy = false;

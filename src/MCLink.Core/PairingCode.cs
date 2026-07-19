@@ -18,6 +18,7 @@ public sealed record PairingCodePayload(
 public static class PairingCodeCodec
 {
     public const string Prefix = "MCL1.";
+    // 解码前后都卡住上限，免得一段很小的压缩文本在解压时占满内存。
     public const int MaximumUncompressedBytes = 128 * 1024;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -37,6 +38,7 @@ public static class PairingCodeCodec
             throw new InvalidDataException("The pairing-code payload is invalid.");
         }
 
+        // 连接码要能直接复制到聊天框里，因此把协商信息压缩后换成 URL 安全的 Base64。
         var json = JsonSerializer.SerializeToUtf8Bytes(
             new WirePayload(payload.SessionId, payload.Role, payload.ExpiresAtUtc, payload.Sdp),
             JsonOptions);

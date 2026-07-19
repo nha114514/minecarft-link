@@ -6,12 +6,14 @@ namespace MCLink.Core;
 
 internal static class P2pBridgeConnectionLimit
 {
+    // 房主和加入者共用这 16 个名额，避免一次涌入太多 Minecraft 连接把进程拖住。
     internal static readonly SemaphoreSlim Shared = new(16, 16);
 }
 
 public sealed class GuestLoopbackProxy
 {
     private readonly P2pPeerSession _session;
+    // 只绑定回环地址。加入者的 Minecraft 客户端能访问，局域网里其他设备看不到这个端口。
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stopping = new();
     private readonly object _sync = new();
@@ -98,6 +100,7 @@ public sealed class GuestLoopbackProxy
         {
             await P2pBridgeConnectionLimit.Shared.WaitAsync(_stopping.Token);
             permitAcquired = true;
+            // 每个 Minecraft TCP 连接单独占一个 DataChannel，互不抢字节流。
             channel = await _session.CreateDataChannelAsync(
                 $"tcp-{Guid.NewGuid():N}",
                 Timeout.InfiniteTimeSpan,
@@ -240,6 +243,7 @@ public sealed class HostMinecraftBridge
     public HostMinecraftBridge(IPEndPoint minecraftEndpoint)
     {
         ArgumentNullException.ThrowIfNull(minecraftEndpoint);
+        // 只允许转到本机 Minecraft，连接码不能被用来探测房主局域网里的其他服务。
         if (!IPAddress.IsLoopback(minecraftEndpoint.Address))
         {
             throw new ArgumentException(
@@ -279,6 +283,7 @@ public sealed class HostMinecraftBridge
 
     private void HandleDataChannelReceived(RTCDataChannel channel)
     {
+        // 控制通道和 Minecraft 通道共用同一个 PeerConnection，靠标签把它们区分开。
         if (!channel.label.StartsWith("tcp-", StringComparison.Ordinal))
         {
             return;

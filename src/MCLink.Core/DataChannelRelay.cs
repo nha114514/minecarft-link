@@ -19,7 +19,9 @@ public interface IBinaryDataChannel
 public sealed class DataChannelByteStream : IAsyncDisposable
 {
     private const int MaximumPayloadSize = 16 * 1024;
+    // WebRTC 自己也有发送缓冲区。积压到这里就先等一等，避免慢网络把内存一路顶高。
     private const ulong MaximumBufferedAmount = 1_048_576;
+    // 帧首字节：0 是数据，1 表示本方向的 TCP 已读完，2 表示本地 TCP 已准备好。
     private static readonly byte[] FinFrame = [1];
     private static readonly byte[] ReadyFrame = [2];
 
@@ -146,6 +148,7 @@ public sealed class DataChannelByteStream : IAsyncDisposable
         {
             if (Interlocked.Exchange(ref _writesCompleted, 1) == 0)
             {
+                // TCP 的 EOF 要跨过数据通道传给另一边；这不是关闭整个 P2P 连接。
                 ThrowIfChannelClosed();
                 _channel.Send(FinFrame.ToArray());
             }
@@ -281,6 +284,7 @@ public static class TcpDataChannelRelay
     {
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var tcpStream = tcp.GetStream();
+        // 两个方向同时搬运字节。任一方向异常时会把另一边也停掉，避免留下半死连接。
         var tcpToDataChannel = PumpTcpToDataChannelAsync(tcpStream, byteStream, stopping.Token);
         var dataChannelToTcp = PumpDataChannelToTcpAsync(
             byteStream,
@@ -361,6 +365,7 @@ public static class TcpDataChannelRelay
             var count = await tcpStream.ReadAsync(buffer, cancellationToken);
             if (count == 0)
             {
+                // 本地 TCP 半关闭后，远端仍可能有数据要回传。
                 dataChannelStream.CompleteWrites();
                 return;
             }
@@ -381,6 +386,7 @@ public static class TcpDataChannelRelay
             var count = await dataChannelStream.ReceiveAsync(buffer, cancellationToken);
             if (count == 0)
             {
+                // 收到远端 FIN，只关闭本地 socket 的发送方向，让已在路上的数据读完。
                 ShutdownSend(tcpSocket);
                 return;
             }

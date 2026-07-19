@@ -26,6 +26,7 @@ public sealed class P2pPeerSession : IAsyncDisposable
     {
         _peerConnection = new RTCPeerConnection(new RTCConfiguration
         {
+            // STUN 只用于找双方可直连的候选地址；真正的数据不会经过它。
             iceServers = stunUrls.Select(url => new RTCIceServer { urls = url }).ToList(),
             iceTransportPolicy = RTCIceTransportPolicy.all,
             X_GatherTimeoutMs = 15_000,
@@ -66,6 +67,7 @@ public sealed class P2pPeerSession : IAsyncDisposable
             }
         }
 
+        // 连接码只交换一次，所以等 ICE 收集结束后再把完整候选信息写进 SDP。
         var offer = _peerConnection.createOffer(new RTCOfferOptions
         {
             X_WaitForIceGatheringToComplete = true,
@@ -226,6 +228,7 @@ public sealed class P2pPeerSession : IAsyncDisposable
     private void ApplyRemoteDescription(string sdp, RTCSdpType type)
     {
         ArgumentNullException.ThrowIfNull(sdp);
+        // 工具只做直连。对方若带来中继候选，宁可报错，也不悄悄走第三方中转。
         if (sdp.Contains("typ relay", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("Relay ICE candidates are not accepted.");
